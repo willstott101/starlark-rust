@@ -1,0 +1,18 @@
+[package]
+name = "starlark-python"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "starlark"
+crate-type = ["cdylib"]
+
+[dependencies.anyhow]
+version = "1.0.26"
+
+[dependencies.pyo3]
+version = "0.14.5"
+features = ["extension-module"]
+
+[dependencies.starlark]
+path = "../starlark"

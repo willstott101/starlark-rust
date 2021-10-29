@@ -2,4 +2,5 @@
 members = [
     "starlark",
     "starlark_derive",
+    "python",
 ]
