@@ -1,6 +1,7 @@
 use pyo3::{
     exceptions::{PyRuntimeError, PySyntaxError},
     prelude::*,
+    types::PyList,
 };
 use starlark::{
     environment::{Globals, Module},
@@ -8,17 +9,12 @@ use starlark::{
     syntax::{AstModule, Dialect},
     values::Value,
 };
+use starlark::values::list::List;
+// use starlark::values::ValueLike;
 
 fn starlark_type_to_pyo3_type(py: Python, v: &Value) -> Option<PyObject> {
     match v.get_type() {
         "string" => Some(v.to_str().to_object(py)),
-        "int" => {
-            if let Some(vi) = v.unpack_num().map(|n| n.as_int()) {
-                Some(vi.to_object(py))
-            } else {
-                None
-            }
-        }
         // array
         "bool" => Some(v.to_bool().to_object(py)),
         // dict
@@ -31,8 +27,21 @@ fn starlark_type_to_pyo3_type(py: Python, v: &Value) -> Option<PyObject> {
             }
         }
         // function
-        // int
-        // list
+        "int" => {
+            if let Some(vi) = v.unpack_num().map(|n| n.as_int()) {
+                Some(vi.to_object(py))
+            } else {
+                None
+            }
+        }
+        "list" => {
+            match List::from_value(*v) {
+                Some(l) => {
+                    Some(PyList::new(py, l.iter().map(|i| starlark_type_to_pyo3_type(py, &i))).to_object(py))
+                },
+                None => None,
+            }
+        },
         "NoneType" => None,
         // range
         // record (FrozenDict?)
