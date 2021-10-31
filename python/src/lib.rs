@@ -1,7 +1,7 @@
 use pyo3::{
     exceptions::{PyRuntimeError, PySyntaxError},
     prelude::*,
-    types::PyList,
+    types::{PyList, PyDict},
 };
 use starlark::{
     environment::{Globals, Module},
@@ -10,14 +10,29 @@ use starlark::{
     values::Value,
 };
 use starlark::values::list::List;
+use starlark::values::dict::Dict;
 // use starlark::values::ValueLike;
 
-fn starlark_type_to_pyo3_type(py: Python, v: &Value) -> Option<PyObject> {
-    match v.get_type() {
+fn starlark_type_to_pyo3_type(py: Python, v: &Value) -> PyResult<Option<PyObject>> {
+    Ok(match v.get_type() {
         "string" => Some(v.to_str().to_object(py)),
         // array
         "bool" => Some(v.to_bool().to_object(py)),
-        // dict
+        "dict" => {
+            match Dict::from_value(*v) {
+                Some(d) => {
+                    let pd = PyDict::new(py);
+                    for i in d.iter() {
+                        pd.set_item(
+                            starlark_type_to_pyo3_type(py, &i.0)?,
+                            starlark_type_to_pyo3_type(py, &i.1)?
+                        )?;
+                    }
+                    Some(pd.to_object(py))
+                },
+                None => None,
+            }
+        },
         // enum (int, string)?
         "float" => {
             if let Some(vf) = v.unpack_num().map(|n| n.as_float()) {
@@ -37,7 +52,13 @@ fn starlark_type_to_pyo3_type(py: Python, v: &Value) -> Option<PyObject> {
         "list" => {
             match List::from_value(*v) {
                 Some(l) => {
-                    Some(PyList::new(py, l.iter().map(|i| starlark_type_to_pyo3_type(py, &i))).to_object(py))
+                    let pl = PyList::empty(py);
+                    for i in l.iter() {
+                        pl.append(starlark_type_to_pyo3_type(py, &i)?)?;
+                    };
+                    Some(pl.to_object(py))
+                    // Can't make use of ExactSizeIterator now we return a result?
+                    // Some(PyList::new(py, l.iter().map(|i| starlark_type_to_pyo3_type(py, &i)?)).to_object(py))
                 },
                 None => None,
             }
@@ -48,7 +69,7 @@ fn starlark_type_to_pyo3_type(py: Python, v: &Value) -> Option<PyObject> {
         // struct (FrozenDict?)
         // tuple
         _ => None,
-    }
+    })
 }
 
 /// A Python module implemented in Rust. The name of this function must match
@@ -70,7 +91,7 @@ fn starlark(_py: Python, m: &PyModule) -> PyResult<()> {
             .eval_module(ast, &globals)
             .map_err(|err| PyRuntimeError::new_err(err.to_string()))?;
         Python::with_gil(|py| -> PyResult<Option<PyObject>> {
-            Ok(starlark_type_to_pyo3_type(py, &res))
+            starlark_type_to_pyo3_type(py, &res)
         })
     }
 
