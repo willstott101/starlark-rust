@@ -1,37 +1,32 @@
 use pyo3::{
     exceptions::{PyRuntimeError, PySyntaxError},
     prelude::*,
-    types::{PyList, PyDict},
+    types::{PyDict, PyList, PyTuple},
 };
 use starlark::{
     environment::{Globals, Module},
     eval::Evaluator,
     syntax::{AstModule, Dialect},
-    values::Value,
+    values::{dict::Dict, list::List, tuple::Tuple, Value},
 };
-use starlark::values::list::List;
-use starlark::values::dict::Dict;
-// use starlark::values::ValueLike;
 
 fn starlark_type_to_pyo3_type(py: Python, v: &Value) -> PyResult<Option<PyObject>> {
     Ok(match v.get_type() {
         "string" => Some(v.to_str().to_object(py)),
         // array
         "bool" => Some(v.to_bool().to_object(py)),
-        "dict" => {
-            match Dict::from_value(*v) {
-                Some(d) => {
-                    let pd = PyDict::new(py);
-                    for i in d.iter() {
-                        pd.set_item(
-                            starlark_type_to_pyo3_type(py, &i.0)?,
-                            starlark_type_to_pyo3_type(py, &i.1)?
-                        )?;
-                    }
-                    Some(pd.to_object(py))
-                },
-                None => None,
+        "dict" => match Dict::from_value(*v) {
+            Some(d) => {
+                let pd = PyDict::new(py);
+                for i in d.iter() {
+                    pd.set_item(
+                        starlark_type_to_pyo3_type(py, &i.0)?,
+                        starlark_type_to_pyo3_type(py, &i.1)?,
+                    )?;
+                }
+                Some(pd.to_object(py))
             }
+            None => None,
         },
         // enum (int, string)?
         "float" => {
@@ -49,25 +44,30 @@ fn starlark_type_to_pyo3_type(py: Python, v: &Value) -> PyResult<Option<PyObject
                 None
             }
         }
-        "list" => {
-            match List::from_value(*v) {
-                Some(l) => {
-                    let pl = PyList::empty(py);
-                    for i in l.iter() {
-                        pl.append(starlark_type_to_pyo3_type(py, &i)?)?;
-                    };
-                    Some(pl.to_object(py))
-                    // Can't make use of ExactSizeIterator now we return a result?
-                    // Some(PyList::new(py, l.iter().map(|i| starlark_type_to_pyo3_type(py, &i)?)).to_object(py))
-                },
-                None => None,
+        "list" => match List::from_value(*v) {
+            Some(l) => {
+                let v = l
+                    .iter()
+                    .map(|i| starlark_type_to_pyo3_type(py, &i))
+                    .collect::<PyResult<Vec<Option<PyObject>>>>()?;
+                Some(PyList::new(py, v.iter()).to_object(py))
             }
+            None => None,
         },
         "NoneType" => None,
         // range
         // record (FrozenDict?)
         // struct (FrozenDict?)
-        // tuple
+        "tuple" => match Tuple::from_value(*v) {
+            Some(l) => {
+                let v = l
+                    .iter()
+                    .map(|i| starlark_type_to_pyo3_type(py, &i))
+                    .collect::<PyResult<Vec<Option<PyObject>>>>()?;
+                Some(PyTuple::new(py, v.iter()).to_object(py))
+            }
+            None => None,
+        },
         _ => None,
     })
 }
