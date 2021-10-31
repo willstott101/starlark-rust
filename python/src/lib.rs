@@ -10,7 +10,7 @@ use starlark::{
     values::{dict::Dict, list::List, tuple::Tuple, Value},
 };
 
-fn starlark_type_to_pyo3_type(py: Python, v: &Value) -> PyResult<Option<PyObject>> {
+fn starlark_value_to_pyobject(py: Python, v: &Value) -> PyResult<Option<PyObject>> {
     Ok(match v.get_type() {
         "string" => Some(v.to_str().to_object(py)),
         // array
@@ -20,8 +20,8 @@ fn starlark_type_to_pyo3_type(py: Python, v: &Value) -> PyResult<Option<PyObject
                 let pd = PyDict::new(py);
                 for i in d.iter() {
                     pd.set_item(
-                        starlark_type_to_pyo3_type(py, &i.0)?,
-                        starlark_type_to_pyo3_type(py, &i.1)?,
+                        starlark_value_to_pyobject(py, &i.0)?,
+                        starlark_value_to_pyobject(py, &i.1)?,
                     )?;
                 }
                 Some(pd.to_object(py))
@@ -48,7 +48,7 @@ fn starlark_type_to_pyo3_type(py: Python, v: &Value) -> PyResult<Option<PyObject
             Some(l) => {
                 let v = l
                     .iter()
-                    .map(|i| starlark_type_to_pyo3_type(py, &i))
+                    .map(|i| starlark_value_to_pyobject(py, &i))
                     .collect::<PyResult<Vec<Option<PyObject>>>>()?;
                 Some(PyList::new(py, v.iter()).to_object(py))
             }
@@ -62,7 +62,7 @@ fn starlark_type_to_pyo3_type(py: Python, v: &Value) -> PyResult<Option<PyObject
             Some(l) => {
                 let v = l
                     .iter()
-                    .map(|i| starlark_type_to_pyo3_type(py, &i))
+                    .map(|i| starlark_value_to_pyobject(py, &i))
                     .collect::<PyResult<Vec<Option<PyObject>>>>()?;
                 Some(PyTuple::new(py, v.iter()).to_object(py))
             }
@@ -91,7 +91,7 @@ fn starlark(_py: Python, m: &PyModule) -> PyResult<()> {
             .eval_module(ast, &globals)
             .map_err(|err| PyRuntimeError::new_err(err.to_string()))?;
         Python::with_gil(|py| -> PyResult<Option<PyObject>> {
-            starlark_type_to_pyo3_type(py, &res)
+            starlark_value_to_pyobject(py, &res)
         })
     }
 
